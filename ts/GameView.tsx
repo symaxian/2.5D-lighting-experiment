@@ -27,12 +27,15 @@ type GameViewInput = {
 class GameView extends Nitro.Component<GameViewInput> {
 
 	private scene: HTMLCanvasElement | null = null;
-	private normals: CanvasRenderingContext2D | null = null;
-	private normalData: ImageData | null = null;
-	private offsets: CanvasRenderingContext2D | null = null;
-	private offsetData: ImageData | null = null;
-	private heights: CanvasRenderingContext2D | null = null;
-	private heightData: ImageData | null = null;
+
+	private normalMapImage: CanvasRenderingContext2D | null = null;
+	private normalMapData: ImageData | null = null;
+
+	private offsetMapImage: CanvasRenderingContext2D | null = null;
+	private offsetMapData: ImageData | null = null;
+
+	private heightMapImage: CanvasRenderingContext2D | null = null;
+	private heightMapData: ImageData | null = null;
 
 	constructor() {
 		super();
@@ -41,18 +44,21 @@ class GameView extends Nitro.Component<GameViewInput> {
 			this.setDirty();
 		});
 		Images.load('img/normals.png', (src, image) => {
-			this.normals = imageToCanvas(image, true);
-			this.normalData = this.normals.getImageData(0, 0, this.normals.canvas.width, this.normals.canvas.height);
+			const normalMapImage = imageToCanvas(image, false);
+			this.normalMapImage = normalMapImage;
+			this.normalMapData = normalMapImage.getImageData(0, 0, normalMapImage.canvas.width, normalMapImage.canvas.height);
 			this.setDirty();
 		});
 		Images.load('img/y_offsets.png', (src, image) => {
-			this.offsets = imageToCanvas(image, true);
-			this.offsetData = this.offsets.getImageData(0, 0, this.offsets.canvas.width, this.offsets.canvas.height);
+			const offsetMapImage = imageToCanvas(image, false);
+			this.offsetMapImage = offsetMapImage;
+			this.offsetMapData = offsetMapImage.getImageData(0, 0, offsetMapImage.canvas.width, offsetMapImage.canvas.height);
 			this.setDirty();
 		});
 		Images.load('img/heights.png', (src, image) => {
-			this.heights = imageToCanvas(image, true)!
-			this.heightData = this.heights.getImageData(0, 0, this.heights.canvas.width, this.heights.canvas.height);
+			const heightMapImage = imageToCanvas(image, false)!
+			this.heightMapImage = heightMapImage;
+			this.heightMapData = heightMapImage.getImageData(0, 0, heightMapImage.canvas.width, heightMapImage.canvas.height);
 			this.setDirty();
 		});
 	}
@@ -65,14 +71,14 @@ class GameView extends Nitro.Component<GameViewInput> {
 
 		let shadowMap: CanvasRenderingContext2D | null = null;
 		const getShadowMap = (): CanvasRenderingContext2D | null => {
-			if (shadowMap === null && this.heightData !== null) {
+			if (shadowMap === null && this.heightMapData !== null) {
 				const lightX = input.lightX;
 				const lightY = input.lightY;
 				const lightZ = input.lightZ;
 				assert(lightX !== undefined);
 				assert(lightY !== undefined);
 				assert(lightZ !== undefined);
-				shadowMap = generateShadowMap2(this.heightData, lightX / input.scale, lightY / input.scale, lightZ, true);
+				shadowMap = generateShadowMap2(this.heightMapData, lightX / input.scale, lightY / input.scale, lightZ, true);
 			}
 			return shadowMap;
 		};
@@ -86,15 +92,15 @@ class GameView extends Nitro.Component<GameViewInput> {
 			}
 		}
 		else if (input.mode === ImageMode.NORMAL_MAP) {
-			mapImage = (this.normals !== null) ? this.normals! : null;
+			mapImage = (this.normalMapImage !== null) ? this.normalMapImage! : null;
 		}
 		else if (input.mode === ImageMode.PIXEL_OFFSET_MAP) {
-			mapImage = (this.offsets !== null) ? this.offsets : null;
+			mapImage = (this.offsetMapImage !== null) ? this.offsetMapImage : null;
 		}
 		else if (input.mode === ImageMode.HEIGHT_MAP) {
-			mapImage = (this.heights !== null) ? this.heights : null;
+			mapImage = (this.heightMapImage !== null) ? this.heightMapImage : null;
 		}
-		else if (input.mode === ImageMode.SHADOW_MAP && this.heights !== null) {
+		else if (input.mode === ImageMode.SHADOW_MAP && this.heightMapImage !== null) {
 			mapImage = getShadowMap();
 		}
 
@@ -109,9 +115,9 @@ class GameView extends Nitro.Component<GameViewInput> {
 		if (input.renderDynamicLight && input.lightX !== undefined && input.lightY !== undefined) {
 			const roundedLightX = Math.round(input.lightX / input.scale);
 			const roundedLightY = Math.round(input.lightY / input.scale);
-			const normals = (input.applyNormalMap && this.normalData !== null) ? this.normalData : null;
-			const offsets = input.applyPixelLocationOffsetMap ? this.offsetData : null;
-			applyDynamicLightToLightMap(lightCanvas, roundedLightX, roundedLightY, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heightData, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
+			const normals = (input.applyNormalMap && this.normalMapData !== null) ? this.normalMapData : null;
+			const offsets = input.applyPixelLocationOffsetMap ? this.offsetMapData : null;
+			applyDynamicLightToLightMap(lightCanvas, roundedLightX, roundedLightY, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heightMapData, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
 
 			// applyDynamicLightToLightMap(lightCanvas, roundedLightX - 1, roundedLightY + 1, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heights, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
 			// applyDynamicLightToLightMap(lightCanvas, roundedLightX - 1, roundedLightY - 1, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heights, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
@@ -119,22 +125,19 @@ class GameView extends Nitro.Component<GameViewInput> {
 			// applyDynamicLightToLightMap(lightCanvas, roundedLightX + 1, roundedLightY - 1, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heights, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
 		}
 
-		const lightMover = input.lightMoved === undefined ? null : <DraggableLight scale={scale} width={width} height={height} lightX={input.lightX!} lightY={input.lightY!} lightZ={input.lightZ!} lightMoved={input.lightMoved}/>;
-
+		let image: HTMLElement | null = null;
 		if (input.mode === ImageMode.LIGHT_MAP) {
-			return <div style={'width: ' + (input.width * input.scale) + 'px; height: ' + (input.height * input.scale) + 'px'}>
-				<ScaledImage image={lightCanvas.canvas} scale={input.scale}/>
-				{lightMover}
-			</div>;
-		}
-
-		if (mapImage !== null) {
-			applyLightImageToCanvas(mapImage.canvas, lightCanvas.canvas);
+			image = <ScaledImage image={lightCanvas.canvas} scale={input.scale}/>;
+		} else {
+			if (mapImage !== null) {
+				applyLightImageToCanvas(mapImage.canvas, lightCanvas.canvas);
+			}
+			image = mapImage === null ? null : <ScaledImage background='black' image={mapImage.canvas} scale={input.scale}/>
 		}
 
 		return <div style={'width: ' + (input.width * input.scale) + 'px; height: ' + (input.height * input.scale) + 'px'}>
-			{mapImage === null ? null : <ScaledImage background='black' image={mapImage.canvas} scale={input.scale}/>}
-			{lightMover}
+			{image}
+			{input.lightMoved !== undefined && <DraggableLight scale={scale} width={width} height={height} lightX={input.lightX!} lightY={input.lightY!} lightZ={input.lightZ!} lightMoved={input.lightMoved}/>}
 		</div>;
 	}
 

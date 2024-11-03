@@ -115,7 +115,7 @@ class ShapeCastingDemo extends Nitro.Component {
 					<GameView width={width} height={height} scale={scale} mode={ImageMode.PLAIN_IMAGE} ambientLight={ambientLight}/>
 				}
 				{ view === 1 &&
-					<p>We can add a simple point light that can be moved around.</p>
+					<p>We can add a simple point light that can be moved around. You can use the scroll wheel on the image to move the light up and down in the Z-axis, this will be useful later to show shadowing behavior.</p>
 				}
 				{ view === 1 &&
 					<div style="display: flex">
