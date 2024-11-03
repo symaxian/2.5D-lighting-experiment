@@ -2,6 +2,7 @@ enum ImageMode {
 	PLAIN_IMAGE,
 	LIGHT_MAP,
 	NORMAL_MAP,
+	PIXEL_OFFSET_MAP,
 	HEIGHT_MAP,
 	SHADOW_MAP
 }
@@ -16,6 +17,7 @@ type GameViewInput = {
 	lightX?: int
 	lightY?: int
 	lightZ?: int
+	lightMoved?: (x: int, y: int, z: int) => void
 	applyNormalMap?: boolean
 	applyPixelLocationOffsetMap?: boolean
 	applyShadowMap?: boolean
@@ -57,19 +59,20 @@ class GameView extends Nitro.Component<GameViewInput> {
 
 	render(_?: Nitro.Renderer): void | HTMLElement {
 		const input = this.input;
+		const scale = input.scale;
 
 		const LIGHT_DISTANCE = 100;
 
 		let shadowMap: CanvasRenderingContext2D | null = null;
 		const getShadowMap = (): CanvasRenderingContext2D | null => {
-			if (shadowMap === null && this.heights !== null) {
+			if (shadowMap === null && this.heightData !== null) {
 				const lightX = input.lightX;
 				const lightY = input.lightY;
 				const lightZ = input.lightZ;
 				assert(lightX !== undefined);
 				assert(lightY !== undefined);
 				assert(lightZ !== undefined);
-				shadowMap = generateShadowMap(this.heights.canvas, lightX / input.scale, lightY / input.scale, lightZ);
+				shadowMap = generateShadowMap(this.heightData, lightX / input.scale, lightY / input.scale, lightZ, true);
 			}
 			return shadowMap;
 		};
@@ -84,6 +87,9 @@ class GameView extends Nitro.Component<GameViewInput> {
 		}
 		else if (input.mode === ImageMode.NORMAL_MAP) {
 			mapImage = (this.normals !== null) ? this.normals! : null;
+		}
+		else if (input.mode === ImageMode.PIXEL_OFFSET_MAP) {
+			mapImage = (this.offsets !== null) ? this.offsets : null;
 		}
 		else if (input.mode === ImageMode.HEIGHT_MAP) {
 			mapImage = (this.heights !== null) ? this.heights : null;
@@ -113,16 +119,22 @@ class GameView extends Nitro.Component<GameViewInput> {
 			// applyDynamicLightToLightMap(lightCanvas, roundedLightX + 1, roundedLightY - 1, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heights, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
 		}
 
+		const lightMover = input.lightMoved === undefined ? null : <DraggableLight scale={scale} width={width} height={height} lightX={input.lightX!} lightY={input.lightY!} lightZ={input.lightZ!} lightMoved={input.lightMoved}/>;
+
 		if (input.mode === ImageMode.LIGHT_MAP) {
-			return <div><ScaledImage image={lightCanvas.canvas} scale={input.scale}/></div>;
+			return <div style={'width: ' + (input.width * input.scale) + 'px; height: ' + (input.height * input.scale) + 'px'}>
+				<ScaledImage image={lightCanvas.canvas} scale={input.scale}/>
+				{lightMover}
+			</div>;
 		}
 
 		if (mapImage !== null) {
 			applyLightImageToCanvas(mapImage.canvas, lightCanvas.canvas);
 		}
 
-		return <div>
+		return <div style={'width: ' + (input.width * input.scale) + 'px; height: ' + (input.height * input.scale) + 'px'}>
 			{mapImage === null ? null : <ScaledImage background='black' image={mapImage.canvas} scale={input.scale}/>}
+			{lightMover}
 		</div>;
 	}
 
@@ -358,7 +370,7 @@ function applyLightImageToCanvas(target: HTMLCanvasElement, light: HTMLCanvasEle
 // Generate a shadow map given a height map and a dynamic light
 // TODO: Multiple lights, apply to existing shadow map
 // TODO: Optimize, store height data as a single array buffer rather than a canvas?
-function generateShadowMap(heightMap: HTMLCanvasElement, lightX: float, lightY: float, lightZ: float): CanvasRenderingContext2D {
+function generateShadowMap(heightMap: ImageData, lightX: float, lightY: float, lightZ: float, willReadFrequently: boolean): CanvasRenderingContext2D {
 
 	const width = heightMap.width;
 	const height = heightMap.height;
@@ -366,9 +378,9 @@ function generateShadowMap(heightMap: HTMLCanvasElement, lightX: float, lightY: 
 	const canvas = document.createElement('canvas');
 	canvas.width = width;
 	canvas.height = height;
-	const ctx = canvas.getContext('2d')!;
+	const ctx = canvas.getContext('2d', { willReadFrequently: willReadFrequently })!;
 
-	const heightData = heightMap.getContext('2d')!.getImageData(0, 0, width, height).data;
+	const heightData = heightMap.data;
 
 	ctx.globalCompositeOperation = 'lighten'; // We use 'lighten' to ensure that multiple shadows will overwrite correctly, the higher shadow "wins"
 	// ctx.filter = 'blur(1px)';
@@ -460,7 +472,6 @@ function generateShadowMap(heightMap: HTMLCanvasElement, lightX: float, lightY: 
 				ctx.closePath();
 				ctx.fill();
 
-
 			}
 		}
 	}
@@ -474,7 +485,7 @@ function generateShadowMap(heightMap: HTMLCanvasElement, lightX: float, lightY: 
 // Generate a shadow map given a height map and a dynamic light
 // TODO: Multiple lights, apply to existing shadow map
 // TODO: Optimize, store height data as a single array buffer rather than a canvas?
-function generateShadowMap2(heightMap: HTMLCanvasElement, lightX: float, lightY: float, lightZ: float): CanvasRenderingContext2D {
+function generateShadowMap2(heightMap: ImageData, lightX: float, lightY: float, lightZ: float, willReadFrequently: boolean): CanvasRenderingContext2D {
 
 	const width = heightMap.width;
 	const height = heightMap.height;
@@ -482,9 +493,9 @@ function generateShadowMap2(heightMap: HTMLCanvasElement, lightX: float, lightY:
 	const canvas = document.createElement('canvas');
 	canvas.width = width;
 	canvas.height = height;
-	const ctx = canvas.getContext('2d')!;
+	const ctx = canvas.getContext('2d', { willReadFrequently: willReadFrequently })!;
 
-	const heightData = heightMap.getContext('2d')!.getImageData(0, 0, width, height).data;
+	const heightData = heightMap.data;
 
 	ctx.globalCompositeOperation = 'lighten'; // We use 'lighten' to ensure that multiple shadows will overwrite correctly, the higher shadow "wins"
 	// ctx.filter = 'blur(1px)';

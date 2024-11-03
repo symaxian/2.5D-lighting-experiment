@@ -4,7 +4,8 @@ class ScaledImage extends Nitro.Component<{ image: HTMLImageElement | HTMLCanvas
 
 	constructor() {
 		super();
-		this.element.style.border = '2px solid black'
+		this.element.style.position = 'absolute';
+		this.element.style.border = '2px solid black';
 	}
 
 	render(_?: Nitro.Renderer): void | HTMLElement {

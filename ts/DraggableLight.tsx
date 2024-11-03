@@ -18,18 +18,23 @@ class DraggableLight extends Nitro.Component<{ scale: int, width: int, height: i
 		const style = 'position: absolute; display: block; border: 2px solid black; width: ' + (input.width * input.scale) + 'px; height: ' + (input.height * input.scale) + 'px';
 		return <div style={style} onWheel={this.onWheel}>
 			<div style={'position: absolute; background-color: red; width: ' + stickWidth + '; height: ' + (input.lightZ * scale) + 'px; left: ' + (input.lightX - stickWidth/2) + '; top: ' + zIndexIndicatorY + 'px'}></div>
-			<div style={'position: absolute; background-color: yellow; width: ' + lightSize + '; height: ' + lightSize + 'px; border-radius: ' + (lightRadius * scale) + 'px; left: ' + lightX + '; top: ' + lightY + 'px'} onMouseDown={this.onMouseDown}></div>
+			<div style={'position: absolute; background-color: yellow; width: ' + lightSize + '; height: ' + lightSize + 'px; border-radius: ' + (lightRadius * scale) + 'px; left: ' + lightX + '; top: ' + lightY + 'px'} onPointerDown={this.onPointerDown}></div>
 		</div>;
 		// throw new Error("Method not implemented.");
 	}
 
-	onMouseDown = (event: MouseEvent) => {
-		listenToMouseMoveUntilMouseUp(e => {
-			this.input.lightMoved(e.movementX, e.movementY, 0);
-			// document.body.addEventListener('wheel', this.onWheel, { passive: false });
-		}, e => {
-			// document.body.removeEventListener('wheel', this.onWheel);
-		}, 'grabbing');
+	onPointerDown = (event: MouseEvent) => {
+		if (event.button === 0) {
+			// console.log('down', event);
+			listenToMouseMoveUntilMouseUp(e => {
+				this.input.lightMoved(e.movementX, e.movementY, 0);
+				// console.log('move', event);
+				// document.body.addEventListener('wheel', this.onWheel, { passive: false });
+			}, e => {
+				// console.log('up', event);
+				// document.body.removeEventListener('wheel', this.onWheel);
+			}, 'grabbing');
+		}
 	}
 
 	private onWheel = (e: WheelEvent) => {
@@ -46,8 +51,8 @@ class DraggableLight extends Nitro.Component<{ scale: int, width: int, height: i
 
 function listenToMouseMoveUntilMouseUp(onpointermove: (e: MouseEvent) => void, onpointerup: ((e: MouseEvent) => void) | null = null, cursorOverride: string | null = null) {
 	// console.log('pointer down');
-	assert(window['onpointermove'] === null);
-	assert(window['onpointerup'] === null);
+	// assert(window['onpointermove'] === null);
+	// assert(window['onpointerup'] === null);
 	window['onpointermove'] = onpointermove;
 	if (cursorOverride !== null) {
 		document.body.classList.add('force-' + cursorOverride);
