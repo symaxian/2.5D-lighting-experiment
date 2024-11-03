@@ -262,6 +262,17 @@ class ShapeCastingDemo extends Nitro.Component {
 						</div>
 					</div>
 				}
+				{ view === 5 &&
+					<p>
+						Is this technique usable within a game? Almost certainly not in it's current state due to performance issues, iterating over and calculating the lighting to be applied to each pixel using the CPU is very slow.
+						<br/>
+						<br/>
+						Utilizing SIMD could speed it up but I doubt it would be enough once you increase the world size and add multiple light sources.
+						<br/>
+						<br/>
+						Perhaps it would be possible to perform these lighting calculations within a shader, but at that point why not just switch to a true 3D lighting model.
+					</p>
+				}
 				
 			</div>
 

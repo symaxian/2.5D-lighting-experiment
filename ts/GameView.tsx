@@ -82,7 +82,8 @@ class GameView extends Nitro.Component<GameViewInput> {
 				assert(lightX !== undefined);
 				assert(lightY !== undefined);
 				assert(lightZ !== undefined);
-				shadowMap = generateShadowMap3(this.heightMapData.width, this.heightMapData.height, this.heightRects, lightX / input.scale, lightY / input.scale, lightZ, true);
+				shadowMap = generateShadowMap2(this.heightMapData, lightX / input.scale, lightY / input.scale, lightZ, true);
+				// shadowMap = generateShadowMap3(this.heightMapData.width, this.heightMapData.height, this.heightRects, lightX / input.scale, lightY / input.scale, lightZ, true);
 			}
 			return shadowMap;
 		};
@@ -121,12 +122,13 @@ class GameView extends Nitro.Component<GameViewInput> {
 			const roundedLightY = Math.round(input.lightY / input.scale);
 			const normalData = (input.applyNormalMap && this.normalData !== null) ? this.normalData : null;
 			const offsets = input.applyPixelLocationOffsetMap ? this.offsetMapData : null;
-			applyDynamicLightToLightMap(lightCanvas, roundedLightX, roundedLightY, input.lightZ, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normalData, offsets, this.heightMapData, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
+			const heightMapData = input.applyPixelLocationOffsetMap ? this.heightMapData : null;
+			applyDynamicLightToLightMap(lightCanvas, roundedLightX, roundedLightY, input.lightZ, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normalData, offsets, heightMapData, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
 
-			// applyDynamicLightToLightMap(lightCanvas, roundedLightX - 1, roundedLightY + 1, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heights, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
-			// applyDynamicLightToLightMap(lightCanvas, roundedLightX - 1, roundedLightY - 1, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heights, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
-			// applyDynamicLightToLightMap(lightCanvas, roundedLightX + 1, roundedLightY + 1, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heights, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
-			// applyDynamicLightToLightMap(lightCanvas, roundedLightX + 1, roundedLightY - 1, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heights, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
+			// applyDynamicLightToLightMap(lightCanvas, roundedLightX - 1, roundedLightY + 1, input.lightZ, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normalData, offsets, heightMapData, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
+			// applyDynamicLightToLightMap(lightCanvas, roundedLightX - 1, roundedLightY - 1, input.lightZ, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normalData, offsets, heightMapData, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
+			// applyDynamicLightToLightMap(lightCanvas, roundedLightX + 1, roundedLightY + 1, input.lightZ, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normalData, offsets, heightMapData, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
+			// applyDynamicLightToLightMap(lightCanvas, roundedLightX + 1, roundedLightY - 1, input.lightZ, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normalData, offsets, heightMapData, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
 		}
 
 		let image: HTMLElement | null = null;
@@ -538,22 +540,30 @@ function generateShadowMap2(heightMap: ImageData, lightX: float, lightY: float, 
 
 				let shadowDistance: int;
 				const pixelHeightInPixels = heightValue / HEIGHT_MAP_VALUE_DIVIDER;
-				if (lightZ < pixelHeightInPixels) {
+				if (lightZ <= pixelHeightInPixels) {
 					// Light is lower than the pixel, shadow extends to infnity
 					shadowDistance = 100; // TODO: Calculate minimum needed here based on the viewport
+	
+					ctx.fillStyle = 'grey';
 				}
 				else {
-					let angleOfLightSourceRelativeToPixel = Math.atan(pixelHeightInPixels / lightZ);
-					shadowDistance = pixelHeightInPixels * Math.tan(angleOfLightSourceRelativeToPixel);
+					// let angleOfLightSourceRelativeToPixel = Math.atan(pixelHeightInPixels / lightZ);
+					// shadowDistance = pixelHeightInPixels * Math.tan(angleOfLightSourceRelativeToPixel);
+	
+					const distanceFromLightToPixel = Utils.pythagoreanDistance(lightX, lightY, pixelX + 0.5, pixelY + 0.5);
 
-					// shadowDistance = pixelHeightInPixels - (lightZ - pixelHeightInPixels);
-					// if (shadowDistance <= 0) continue;
+					const fudgeFactor = 4;
+
+					const lightStride = distanceFromLightToPixel / (lightZ + fudgeFactor - pixelHeightInPixels);
+
+					shadowDistance = lightStride * pixelHeightInPixels;
+	
+					const gradient = ctx.createRadialGradient(pixelX, pixelY, 1, pixelX, pixelY, shadowDistance);
+					gradient.addColorStop(0, 'rgb(' + greyValue + ',' + greyValue + ',' + greyValue + ')');
+					gradient.addColorStop(1, 'rgb(' + 0 + ',' + 0 + ',' + 0 + ',' + 0 + ')');
+					ctx.fillStyle = gradient;
 				}
 
-				const gradient = ctx.createRadialGradient(lightX, lightY, 1, lightX, lightY, 100);
-				gradient.addColorStop(0, 'rgb(' + greyValue + ',' + greyValue + ',' + greyValue + ')');
-				gradient.addColorStop(1, 'rgb(' + greyValue + ',' + greyValue + ',' + greyValue + ',' + 0 + ')');
-				ctx.fillStyle = gradient;
 
 				// Project the top-left corner
 				const projectedTopLeftX = topLeftX + topLeftDeltaX * shadowDistance;
@@ -801,22 +811,21 @@ function generateShadowMap3(width: int, height: int, heightRects: HeightRect[], 
 
 			let shadowDistance: int;
 			const pixelHeightInPixels = heightValue / HEIGHT_MAP_VALUE_DIVIDER;
-			if (lightZ < pixelHeightInPixels) {
+			if (lightZ <= pixelHeightInPixels) {
 				// Light is lower than the pixel, shadow extends to infnity
 				shadowDistance = 100; // TODO: Calculate minimum needed here based on the viewport
+
+				ctx.fillStyle = 'red';
 			}
 			else {
-				let angleOfLightSourceRelativeToPixel = Math.atan(pixelHeightInPixels / lightZ);
+				const angleOfLightSourceRelativeToPixel = Math.atan(pixelHeightInPixels / lightZ);
 				shadowDistance = pixelHeightInPixels * Math.tan(angleOfLightSourceRelativeToPixel);
 
-				// shadowDistance = pixelHeightInPixels - (lightZ - pixelHeightInPixels);
-				// if (shadowDistance <= 0) continue;
+				const gradient = ctx.createRadialGradient(lightX, lightY, 1, lightX, lightY, shadowDistance);
+				gradient.addColorStop(0, 'rgb(' + greyValue + ',' + 0 + ',' + 0 + ')');
+				gradient.addColorStop(1, 'rgb(' + 0 + ',' + 0 + ',' + 0 + ',' + 0 + ')');
+				ctx.fillStyle = gradient;
 			}
-
-			const gradient = ctx.createRadialGradient(lightX, lightY, 1, lightX, lightY, 100);
-			gradient.addColorStop(0, 'rgb(' + greyValue + ',' + greyValue + ',' + greyValue + ')');
-			gradient.addColorStop(1, 'rgb(' + greyValue + ',' + greyValue + ',' + greyValue + ',' + 0 + ')');
-			ctx.fillStyle = gradient;
 
 			// Project the top-left corner
 			const projectedTopLeftX = topLeftX + topLeftDeltaX * shadowDistance;
