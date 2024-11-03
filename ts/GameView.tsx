@@ -72,7 +72,7 @@ class GameView extends Nitro.Component<GameViewInput> {
 				assert(lightX !== undefined);
 				assert(lightY !== undefined);
 				assert(lightZ !== undefined);
-				shadowMap = generateShadowMap(this.heightData, lightX / input.scale, lightY / input.scale, lightZ, true);
+				shadowMap = generateShadowMap2(this.heightData, lightX / input.scale, lightY / input.scale, lightZ, true);
 			}
 			return shadowMap;
 		};
@@ -517,11 +517,10 @@ function generateShadowMap2(heightMap: ImageData, lightX: float, lightY: float, 
 				const angleFromLightToPixelTopLeft = Math.atan2(pixelY - lightY, pixelX - lightX);
 				const angleFromLightToPixelTopRight = Math.atan2(pixelY - lightY, pixelX + 1 - lightX);
 				const angleFromLightToPixelBottomLeft = Math.atan2(pixelY + 1 - lightY, pixelX - lightX);
-				const angleFromLightToPixelBottomRight = Math.atan2(pixelY - lightY, pixelX + 1 - lightX);
+				const angleFromLightToPixelBottomRight = Math.atan2(pixelY + 1 - lightY, pixelX + 1 - lightX);
 
 				const heightReductionFactorToReduceSelfShadowNoise = 0;
 				const greyValue = heightValue - heightReductionFactorToReduceSelfShadowNoise;
-				ctx.fillStyle = 'rgb(' + greyValue + ',' + greyValue + ',' + greyValue + ')';
 
 				const topLeftDeltaX = Math.cos(angleFromLightToPixelTopLeft);
 				const topLeftDeltaY = Math.sin(angleFromLightToPixelTopLeft);
@@ -641,7 +640,6 @@ function generateShadowMap2(heightMap: ImageData, lightX: float, lightY: float, 
 				}
 
 				// Draw the full projected shape
-				ctx.fillStyle = 'red';
 				ctx.beginPath();
 				ctx.moveTo(topMostEdgeX1, topMostEdgeY1);
 				ctx.lineTo(topMostEdgeX2, topMostEdgeY2);
