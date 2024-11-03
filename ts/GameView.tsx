@@ -36,6 +36,7 @@ class GameView extends Nitro.Component<GameViewInput> {
 
 	private heightMapImage: CanvasRenderingContext2D | null = null;
 	private heightMapData: ImageData | null = null;
+	private heightRects: HeightRect[] | null = null;
 
 	constructor() {
 		super();
@@ -59,6 +60,7 @@ class GameView extends Nitro.Component<GameViewInput> {
 			const heightMapImage = imageToCanvas(image, false)!
 			this.heightMapImage = heightMapImage;
 			this.heightMapData = heightMapImage.getImageData(0, 0, heightMapImage.canvas.width, heightMapImage.canvas.height);
+			this.heightRects = generateHeightRects(this.heightMapData);
 			this.setDirty();
 		});
 	}
@@ -71,14 +73,14 @@ class GameView extends Nitro.Component<GameViewInput> {
 
 		let shadowMap: CanvasRenderingContext2D | null = null;
 		const getShadowMap = (): CanvasRenderingContext2D | null => {
-			if (shadowMap === null && this.heightMapData !== null) {
+			if (shadowMap === null && this.heightMapData !== null && this.heightRects !== null) {
 				const lightX = input.lightX;
 				const lightY = input.lightY;
 				const lightZ = input.lightZ;
 				assert(lightX !== undefined);
 				assert(lightY !== undefined);
 				assert(lightZ !== undefined);
-				shadowMap = generateShadowMap2(this.heightMapData, lightX / input.scale, lightY / input.scale, lightZ, true);
+				shadowMap = generateShadowMap3(this.heightMapData.width, this.heightMapData.height, this.heightRects, lightX / input.scale, lightY / input.scale, lightZ, true);
 			}
 			return shadowMap;
 		};
@@ -205,11 +207,14 @@ function applyDynamicLightToLightMap(
 	const dynamicLightR = lightColorParsed.r;
 	const dynamicLightG = lightColorParsed.g;
 	const dynamicLightB = lightColorParsed.b;
+	const lightDistanceSquared = lightDistance * lightDistance;
 
 	const lightCanvas = lightCtx.canvas;
 	// ctx.drawImage(source.canvas, 0, 0);
 
+	// console.time('get lightCtx image data');
 	const imageData = lightCtx.getImageData(0, 0, lightCanvas.width, lightCanvas.height);
+	// console.timeEnd('get lightCtx image data');
 	// const imagePixelData = imageData.data;
 
 	let normalPixelData: Uint8ClampedArray | null = null;
@@ -229,7 +234,9 @@ function applyDynamicLightToLightMap(
 
 	let shadowPixelData: Uint8ClampedArray | null = null;
 	if (shadowMap !== null) {
+		// console.time('get shadowMap image data');
 		const shadowData = shadowMap.getImageData(0, 0, shadowMap.canvas.width, shadowMap.canvas.height);
+		// console.timeEnd('get shadowMap image data');
 		shadowPixelData = shadowData.data;
 	}
 
@@ -237,11 +244,16 @@ function applyDynamicLightToLightMap(
 
 	lightCtx.filter = 'blur(2px)';
 
-	for (let pixelY = 0; pixelY < lightCanvas.height; pixelY++) {
-		for (let pixelX = 0; pixelX < lightCanvas.width; pixelX++) {
-			const distance = Utils.pythagoreanDistance(pixelX, pixelY, lightX, lightY);
-			if (distance < lightDistance) {
-				const i = ((pixelY * lightCanvas.width) + pixelX) * 4;
+	// console.time('apply dynamic light to light map');
+
+	const imageWidth = lightCanvas.width;
+	const imageHeight = lightCanvas.height;
+
+	for (let pixelY = 0; pixelY < imageHeight; pixelY++) {
+		for (let pixelX = 0; pixelX < imageWidth; pixelX++) {
+			const distanceSquared = Utils.pythagoreanDistanceSquared(pixelX, pixelY, lightX, lightY);
+			if (distanceSquared < lightDistanceSquared) {
+				const i = ((pixelY * imageWidth) + pixelX) * 4;
 
 				// Correct the pixel x/y according to the offset map, to treat it as if it was unskewed and directly below the camera
 				const correctedPixelX = pixelX;
@@ -249,7 +261,7 @@ function applyDynamicLightToLightMap(
 				if (pixelOffsetData !== null) {
 					correctedPixelY += pixelOffsetData[i] / HEIGHT_MAP_VALUE_DIVIDER;
 				}
-				const correctedPixelIndex = ((correctedPixelY * lightCanvas.width) + correctedPixelX) * 4;
+				const correctedPixelIndex = ((correctedPixelY * imageWidth) + correctedPixelX) * 4;
 
 				// If the pixel height is below the shadow at that x/y, skip it so we don't apply the dynamic light
 				if (heightPixelData !== null && shadowPixelData !== null) {
@@ -330,8 +342,7 @@ function applyDynamicLightToLightMap(
 
 				}
 
-				let lightIntensity = (lightDistance - distance) / lightDistance;
-				lightIntensity *= 1;
+				let lightIntensity = (lightDistance - Math.sqrt(distanceSquared)) / lightDistance;
 				lightIntensity *= intensityFromNormal;
 				// const r = imagePixelData[i];
 				// const g = imagePixelData[i + 1];
@@ -343,20 +354,17 @@ function applyDynamicLightToLightMap(
 				const newG = Math.round(lightIntensity * dynamicLightG);
 				const newB = Math.round(lightIntensity * dynamicLightB);
 
-				let alpha = 255;
-				if (shadowPixelData !== null) {
-					// alpha = shadowPixelData[i + 3];
-				}
-
 				imageData.data[i] += newR;
 				imageData.data[i + 1] += newG;
 				imageData.data[i + 2] += newB;
-				imageData.data[i + 3] = alpha;
+				imageData.data[i + 3] = 255;
 				// imageData.data[i + 3] = ;
 				// RenderUtils.setPixelColor(imageData.data, i, newR, newG, newB);
 			}
 		}
 	}
+
+	// console.timeEnd('apply dynamic light to light map');
 
 	lightCtx.putImageData(imageData, 0, 0);
 }
@@ -659,6 +667,269 @@ function generateShadowMap2(heightMap: ImageData, lightX: float, lightY: float, 
 			}
 		}
 	}
+
+	ctx.globalCompositeOperation = 'source-over';
+
+	return ctx;
+}
+
+type HeightRect = {
+	x: int,
+	y: int,
+	width: int,
+	height: int,
+	z: int
+}
+
+function generateHeightRects(heightMap: ImageData): HeightRect[] {
+	const width = heightMap.width;
+	const height = heightMap.height;
+
+	const data = new Uint8Array(width * height);
+
+	// Create a simpler data buffer of just the height values, no need for full RGBA
+
+	for (let y = 0; y < height; y++) {
+		for (let x = 0; x < width; x++) {
+			const i = y * width + x;
+			const value = heightMap.data[i * 4];
+			data[y * width + x] = value;
+		}
+	}
+
+	// Construct the height rects
+
+	const rects: HeightRect[] = [];
+
+	for (let y = 0; y < height; y++) {
+		for (let x = 0; x < width; x++) {
+			const i = y * width + x;
+			const value = data[i];
+			if (value > 0) {
+				const rectWidth = getRectWidthStartingAt(width, data, x, y, value);
+				const rectHeight = getRectHeightStartingAt(width, height, data, x, y, value, rectWidth);
+				clearHeights(width, data, x, y, rectWidth, rectHeight);
+				rects.push({
+					x,
+					y,
+					width: rectWidth,
+					height: rectHeight,
+					z: value
+				});
+			}
+		}
+	}
+
+	return rects;
+}
+
+function getRectWidthStartingAt(imageWidth: int, data: Uint8Array, rectX: int, rectY: int, heightValue: int): int {
+	let rectWidth = 1;
+	while (rectX + rectWidth < imageWidth) {
+		const i = rectY * imageWidth + rectX + rectWidth;
+		const value = data[i];
+		if (value !== heightValue) {
+			break;
+		}
+		rectWidth++;
+	}
+	return rectWidth;
+}
+
+function getRectHeightStartingAt(imageWidth: int, imageHeight: int, data: Uint8Array, rectX: int, rectY: int, heightValue: int, rectWidth: int): int {
+	let rectHeight = 1; // We can safely start at 1, we know the first row of pixels all matches
+	while (rectY + rectHeight < imageHeight) {
+		for (let x = 0; x < rectWidth; x++) {
+			const i = (rectY + rectHeight) * imageWidth + rectX + x;
+			const value = data[i];
+			if (value !== heightValue) {
+				return rectHeight;
+			}
+		}
+		rectHeight++;
+	}
+	return rectHeight;
+}
+
+function clearHeights(imageWidth: int, data: Uint8Array, rectX: int, rectY: int, width: int, height: int): void {
+	for (let y = 0; y < height; y++) {
+		for (let x = 0; x < width; x++) {
+			const i = (rectY + y) * imageWidth + rectX + x;
+			data[i] = 0;
+		}
+	}
+}
+
+// Generate a shadow map given a height map and a dynamic light
+// TODO: Multiple lights, apply to existing shadow map
+// TODO: Optimize, store height data as a single array buffer rather than a canvas?
+function generateShadowMap3(width: int, height: int, heightRects: HeightRect[], lightX: float, lightY: float, lightZ: float, willReadFrequently: boolean): CanvasRenderingContext2D {
+
+	const canvas = document.createElement('canvas');
+	canvas.width = width;
+	canvas.height = height;
+	const ctx = canvas.getContext('2d', { willReadFrequently: willReadFrequently })!;
+
+	ctx.globalCompositeOperation = 'lighten'; // We use 'lighten' to ensure that multiple shadows will overwrite correctly, the higher shadow "wins"
+	// ctx.filter = 'blur(1px)';
+
+	for (const rect of heightRects) {
+		const heightValue = rect.z;
+		if (heightValue > 0) {
+			const x = rect.x;
+			const y = rect.y;
+			const width = rect.width;
+			const height = rect.height;
+
+			const topLeftX = x;
+			const topLeftY = y;
+			const topRightX = x + width;
+			const topRightY = y;
+			const bottomLeftX = x;
+			const bottomLeftY = y + height;
+			const bottomRightX = x + width;
+			const bottomRightY = y + height;
+
+			const angleFromLightToPixelTopLeft = Math.atan2(y - lightY, x - lightX);
+			const angleFromLightToPixelTopRight = Math.atan2(y - lightY, x + width - lightX);
+			const angleFromLightToPixelBottomLeft = Math.atan2(y + height - lightY, x - lightX);
+			const angleFromLightToPixelBottomRight = Math.atan2(y + height - lightY, x + width - lightX);
+
+			const heightReductionFactorToReduceSelfShadowNoise = 0;
+			const greyValue = heightValue - heightReductionFactorToReduceSelfShadowNoise;
+
+			const topLeftDeltaX = Math.cos(angleFromLightToPixelTopLeft);
+			const topLeftDeltaY = Math.sin(angleFromLightToPixelTopLeft);
+
+			const topRightDeltaX = Math.cos(angleFromLightToPixelTopRight);
+			const topRightDeltaY = Math.sin(angleFromLightToPixelTopRight);
+
+			const bottomLeftDeltaX = Math.cos(angleFromLightToPixelBottomLeft);
+			const bottomLeftDeltaY = Math.sin(angleFromLightToPixelBottomLeft);
+
+			const bottomRightDeltaX = Math.cos(angleFromLightToPixelBottomRight);
+			const bottomRightDeltaY = Math.sin(angleFromLightToPixelBottomRight);
+
+			let shadowDistance: int;
+			const pixelHeightInPixels = heightValue / HEIGHT_MAP_VALUE_DIVIDER;
+			if (lightZ < pixelHeightInPixels) {
+				// Light is lower than the pixel, shadow extends to infnity
+				shadowDistance = 100; // TODO: Calculate minimum needed here based on the viewport
+			}
+			else {
+				let angleOfLightSourceRelativeToPixel = Math.atan(pixelHeightInPixels / lightZ);
+				shadowDistance = pixelHeightInPixels * Math.tan(angleOfLightSourceRelativeToPixel);
+
+				// shadowDistance = pixelHeightInPixels - (lightZ - pixelHeightInPixels);
+				// if (shadowDistance <= 0) continue;
+			}
+
+			const gradient = ctx.createRadialGradient(lightX, lightY, 1, lightX, lightY, 100);
+			gradient.addColorStop(0, 'rgb(' + greyValue + ',' + greyValue + ',' + greyValue + ')');
+			gradient.addColorStop(1, 'rgb(' + greyValue + ',' + greyValue + ',' + greyValue + ',' + 0 + ')');
+			ctx.fillStyle = gradient;
+
+			// Project the top-left corner
+			const projectedTopLeftX = topLeftX + topLeftDeltaX * shadowDistance;
+			const projectedTopLeftY = topLeftY + topLeftDeltaY * shadowDistance;
+
+			// Project the top-right corner
+			const projectedTopRightX = topRightX + topRightDeltaX * shadowDistance;
+			const projectedTopRightY = topRightY + topRightDeltaY * shadowDistance;
+
+			// Project the bottom-left corner
+			const projectedBottomLeftX = bottomLeftX + bottomLeftDeltaX * shadowDistance;
+			const projectedBottomLeftY = bottomLeftY + bottomLeftDeltaY * shadowDistance;
+
+			// Project the bottom-right corner
+			const projectedBottomRightX = bottomRightX + bottomRightDeltaX * shadowDistance;
+			const projectedBottomRightY = bottomRightY + bottomRightDeltaY * shadowDistance;
+
+			// Determine top-most edge
+			let topMostEdgeX1: number;
+			let topMostEdgeY1: number;
+			let topMostEdgeX2: number;
+			let topMostEdgeY2: number;
+			if (projectedTopLeftY < topLeftY) {
+				topMostEdgeX1 = projectedTopLeftX;
+				topMostEdgeY1 = projectedTopLeftY;
+				topMostEdgeX2 = projectedTopRightX;
+				topMostEdgeY2 = projectedTopRightY;
+			} else {
+				topMostEdgeX1 = topLeftX;
+				topMostEdgeY1 = topLeftY;
+				topMostEdgeX2 = topRightX;
+				topMostEdgeY2 = topRightY;
+			}
+
+			// Determine right-most edge
+			let rightMostEdgeX1: number;
+			let rightMostEdgeY1: number;
+			let rightMostEdgeX2: number;
+			let rightMostEdgeY2: number;
+			if (projectedTopRightX > topRightX) {
+				rightMostEdgeX1 = projectedTopRightX;
+				rightMostEdgeY1 = projectedTopRightY;
+				rightMostEdgeX2 = projectedBottomRightX;
+				rightMostEdgeY2 = projectedBottomRightY;
+			} else {
+				rightMostEdgeX1 = topRightX;
+				rightMostEdgeY1 = topRightY;
+				rightMostEdgeX2 = bottomRightX;
+				rightMostEdgeY2 = bottomRightY;
+			}
+			
+			// Determine bottom-most edge
+			let bottomMostEdgeX1: number;
+			let bottomMostEdgeY1: number;
+			let bottomMostEdgeX2: number;
+			let bottomMostEdgeY2: number;
+			if (projectedBottomLeftY > bottomLeftY) {
+				bottomMostEdgeX1 = projectedBottomLeftX;
+				bottomMostEdgeY1 = projectedBottomLeftY;
+				bottomMostEdgeX2 = projectedBottomRightX;
+				bottomMostEdgeY2 = projectedBottomRightY;
+			} else {
+				bottomMostEdgeX1 = bottomLeftX;
+				bottomMostEdgeY1 = bottomLeftY;
+				bottomMostEdgeX2 = bottomRightX;
+				bottomMostEdgeY2 = bottomRightY;
+			}
+			
+			// Determine left-most edge
+			let leftMostEdgeX1: number;
+			let leftMostEdgeY1: number;
+			let leftMostEdgeX2: number;
+			let leftMostEdgeY2: number;
+			if (projectedTopLeftX < topLeftX) {
+				leftMostEdgeX1 = projectedTopLeftX;
+				leftMostEdgeY1 = projectedTopLeftY;
+				leftMostEdgeX2 = projectedBottomLeftX;
+				leftMostEdgeY2 = projectedBottomLeftY;
+			} else {
+				leftMostEdgeX1 = topLeftX;
+				leftMostEdgeY1 = topLeftY;
+				leftMostEdgeX2 = bottomLeftX;
+				leftMostEdgeY2 = bottomLeftY;
+			}
+
+			// Draw the full projected shape
+			ctx.beginPath();
+			ctx.moveTo(topMostEdgeX1, topMostEdgeY1);
+			ctx.lineTo(topMostEdgeX2, topMostEdgeY2);
+			ctx.lineTo(rightMostEdgeX1, rightMostEdgeY1);
+			ctx.lineTo(rightMostEdgeX2, rightMostEdgeY2);
+			ctx.lineTo(bottomMostEdgeX2, bottomMostEdgeY2);
+			ctx.lineTo(bottomMostEdgeX1, bottomMostEdgeY1);
+			ctx.lineTo(leftMostEdgeX2, leftMostEdgeY2);
+			ctx.lineTo(leftMostEdgeX1, leftMostEdgeY1);
+			ctx.lineTo(topMostEdgeX1, topMostEdgeY1);
+			ctx.closePath();
+			ctx.fill();
+
+		}
+	}
+
 
 	ctx.globalCompositeOperation = 'source-over';
 

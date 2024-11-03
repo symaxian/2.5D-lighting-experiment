@@ -212,6 +212,12 @@ namespace Utils {
 		return Math.sqrt(x * x + y * y);
 	}
 
+	export function pythagoreanDistanceSquared(x1: number, y1: number, x2: number, y2: number): number {
+		const x = x2 - x1;
+		const y = y2 - y1;
+		return x * x + y * y;
+	}
+
 	export function radiansToDegrees(radians: Radians): Degrees {
 		return radians * 180/Math.PI;
 	}
