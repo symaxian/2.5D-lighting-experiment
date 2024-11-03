@@ -30,7 +30,7 @@ class GameView extends Nitro.Component<GameViewInput> {
 
 	private normalMapImage: CanvasRenderingContext2D | null = null;
 	private normalMapData: ImageData | null = null;
-	private normalData: Uint8Array | null = null;
+	private normalData: Float32Array | null = null;
 
 	private offsetMapImage: CanvasRenderingContext2D | null = null;
 	private offsetMapData: ImageData | null = null;
@@ -116,12 +116,12 @@ class GameView extends Nitro.Component<GameViewInput> {
 			lightCanvas = generateAmbientLightCanvas(input.width, input.height, input.ambientLight, true);
 		}
 
-		if (input.renderDynamicLight && input.lightX !== undefined && input.lightY !== undefined) {
+		if (input.renderDynamicLight && input.lightX !== undefined && input.lightY !== undefined && input.lightZ !== undefined) {
 			const roundedLightX = Math.round(input.lightX / input.scale);
 			const roundedLightY = Math.round(input.lightY / input.scale);
 			const normalData = (input.applyNormalMap && this.normalData !== null) ? this.normalData : null;
 			const offsets = input.applyPixelLocationOffsetMap ? this.offsetMapData : null;
-			applyDynamicLightToLightMap(lightCanvas, roundedLightX, roundedLightY, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normalData, offsets, this.heightMapData, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
+			applyDynamicLightToLightMap(lightCanvas, roundedLightX, roundedLightY, input.lightZ, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normalData, offsets, this.heightMapData, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
 
 			// applyDynamicLightToLightMap(lightCanvas, roundedLightX - 1, roundedLightY + 1, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heights, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
 			// applyDynamicLightToLightMap(lightCanvas, roundedLightX - 1, roundedLightY - 1, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heights, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
@@ -190,15 +190,22 @@ function generateImageLitWithAmbientLight(target: CanvasRenderingContext2D, ligh
 	return canvas;
 }
 
-function convertNormalData(normalMap: ImageData): Uint8Array {
+function convertNormalData(normalMap: ImageData): Float32Array {
 	const pixelCount = normalMap.width * normalMap.height;
-	const normalData = new Uint8Array(pixelCount * 2);
+	const normalData = new Float32Array(pixelCount * 2);
 	for (let i = 0; i < pixelCount; i++) {
 		const pixelDataIndex = i * 4;
 		const normalR = normalMap.data[pixelDataIndex];
 		const normalG = normalMap.data[pixelDataIndex + 1];
-		normalData[i * 2] = normalR;
-		normalData[i * 2 + 1] = normalG;
+		if (normalR !== 0 || normalG !== 0) {
+			const normalX = normalR - 128;
+			const normalY = normalG - 128;
+			const normalVectorMagnitude = Math.sqrt(normalX * normalX + normalY * normalY);
+			const normalizedNormalVectorX = normalX / normalVectorMagnitude;
+			const normalizedNormalVectorY = normalY / normalVectorMagnitude;
+			normalData[i * 2] = normalizedNormalVectorX;
+			normalData[i * 2 + 1] = normalizedNormalVectorY;
+		}
 	}
 	return normalData;
 }
@@ -209,9 +216,10 @@ function applyDynamicLightToLightMap(
 	lightCtx: CanvasRenderingContext2D,
 	lightX: int,
 	lightY: int,
+	lightZ: int,
 	lightColor: string,
 	lightDistance: int,
-	normalData: Uint8Array | null,
+	normalData: Float32Array | null,
 	pixelOffsetMap: ImageData | null = null,
 	heightMap: ImageData | null = null,
 	shadowMap: CanvasRenderingContext2D | null = null, // All grey so channel doesn't matter, color value corresponds to height of the object at that x/y
@@ -252,7 +260,7 @@ function applyDynamicLightToLightMap(
 
 	const easingFunc = easing.linear;
 
-	lightCtx.filter = 'blur(2px)';
+	// lightCtx.filter = 'blur(2px)';
 
 	// console.time('apply dynamic light to light map');
 
@@ -261,24 +269,32 @@ function applyDynamicLightToLightMap(
 
 	for (let pixelY = 0; pixelY < imageHeight; pixelY++) {
 		for (let pixelX = 0; pixelX < imageWidth; pixelX++) {
-			const distanceSquared = Utils.pythagoreanDistanceSquared(pixelX, pixelY, lightX, lightY);
-			if (distanceSquared < lightDistanceSquared) {
-				const pixelIndex = (pixelY * imageWidth) + pixelX;
-				const pixelDataIndex = pixelIndex * 4;
 
-				// Correct the pixel x/y according to the offset map, to treat it as if it was unskewed and directly below the camera
-				const correctedPixelX = pixelX;
-				let correctedPixelY = pixelY;
-				if (pixelOffsetData !== null) {
-					correctedPixelY += pixelOffsetData[pixelDataIndex] / HEIGHT_MAP_VALUE_DIVIDER;
-				}
-				const correctedPixelIndex = ((correctedPixelY * imageWidth) + correctedPixelX) * 4;
+			const pixelIndex = (pixelY * imageWidth) + pixelX;
+			const pixelDataIndex = pixelIndex * 4;
+
+			// Correct the pixel x/y according to the offset map, to treat it as if it was unskewed and directly below the camera
+			const correctedPixelX = pixelX;
+			let correctedPixelY = pixelY;
+			if (pixelOffsetData !== null) {
+				correctedPixelY += pixelOffsetData[pixelDataIndex] / HEIGHT_MAP_VALUE_DIVIDER;
+			}
+			const correctedPixelDataIndex = ((correctedPixelY * imageWidth) + correctedPixelX) * 4;
+
+			// Get the pixel Z value
+			let pixelZ = 0;
+			if (heightPixelData !== null) {
+				pixelZ = heightPixelData[correctedPixelDataIndex] / 8;
+			}
+
+			const distanceSquared = Utils.pythagoreanDistanceSquared3(correctedPixelX, correctedPixelY, pixelZ, lightX, lightY, lightZ);
+			if (distanceSquared < lightDistanceSquared) {
 
 				// If the pixel height is below the shadow at that x/y, skip it so we don't apply the dynamic light
 				if (heightPixelData !== null && shadowPixelData !== null) {
 					let index: int;
 					if (applyPixelOffsetToShadowCalculations) {
-						index = correctedPixelIndex;
+						index = correctedPixelDataIndex;
 					} else {
 						index = pixelDataIndex;
 					}
@@ -287,70 +303,34 @@ function applyDynamicLightToLightMap(
 					if (height < shadowHeight) continue;
 				}
 
-				let normalR = 128;
-				let normalG = 128;
+				let normalX = 0;
+				let normalY = 0;
 				if (normalData !== null) {
-					normalR = normalData[pixelIndex * 2];
-					normalG = normalData[pixelIndex * 2 + 1];
+					normalX = normalData[pixelIndex * 2];
+					normalY = normalData[pixelIndex * 2 + 1];
 				}
 				let intensityFromNormal: number = 1;
-				if (normalR !== 0 || normalG !== 0) {
+				if (normalX !== 0 || normalY !== 0) {
 
-					const normalX = normalR - 128;
-					const normalY = normalG - 128;
+					const lightVectorX = lightX - correctedPixelX;
+					const lightVectorY = correctedPixelY - lightY;
+					const lightVectorMagnitude = Math.sqrt(lightVectorX * lightVectorX + lightVectorY * lightVectorY);
+					const normalizedLightVectorX = lightVectorX / lightVectorMagnitude;
+					const normalizedLightVectorY = lightVectorY / lightVectorMagnitude;
 
-					// Two approaches, arctan vs dot product, seems like dot product can be made much more performant
-					const useArctan2 = false;
-					if (useArctan2) {
-						const normalAngle = Math.atan2(normalY, normalX);
-						// const normalIntensity = Utils.pythagoreanDistance(0, 0, normalX, normalY) / 128;
-						// intensityFromNormal = Math.PI - (normalAngle - lightAngle); // Is this right?
+					const dotProduct = normalizedLightVectorX * normalX + normalizedLightVectorY * normalY; // This seems to range from -1 to 1
+					// console.log(dotProduct);
+					const dotProductNormalizedFrom0To1 = (dotProduct + 1) / 2;
 
-						let angleOfLightSourceRelativeToPixel = Math.atan2(correctedPixelY - lightY, lightX - correctedPixelX);
-
-						if (angleOfLightSourceRelativeToPixel < 0) angleOfLightSourceRelativeToPixel += Math.PI * 2; // Atan2 likes to give us negative values, normalize so the diff math works
-						let angleDiff = angleOfLightSourceRelativeToPixel - normalAngle
-						angleDiff = (angleDiff + Math.PI) % (Math.PI*2) - Math.PI;
-						angleDiff = Math.abs(angleDiff);
-
-						if (angleDiff > Math.PI) {
-							intensityFromNormal = 0;
-						} else {
-							intensityFromNormal = easingFunc(1 - (angleDiff / Math.PI));
-						}
-					}
-					else {
-						let normalVectorMagnitude = Math.sqrt(normalX * normalX + normalY * normalY);
-						if (normalVectorMagnitude === 0) {
-							intensityFromNormal = 1;
-						}
-						else {
-							const normalizedNormalVectorX = normalX / normalVectorMagnitude;
-							const normalizedNormalVectorY = normalY / normalVectorMagnitude;
-
-							const lightVectorX = lightX - correctedPixelX;
-							const lightVectorY = correctedPixelY - lightY;
-							const lightVectorMagnitude = Math.sqrt(lightVectorX * lightVectorX + lightVectorY * lightVectorY);
-							const normalizedLightVectorX = lightVectorX / lightVectorMagnitude;
-							const normalizedLightVectorY = lightVectorY / lightVectorMagnitude;
-
-							const dotProduct = normalizedLightVectorX * normalizedNormalVectorX + normalizedLightVectorY * normalizedNormalVectorY; // This seems to range from -1 to 1
-							// console.log(dotProduct);
-							const dotProductNormalizedFrom0To1 = (dotProduct + 1) / 2;
-
-							// console.log(dotProduct);
-							// if (dotProduct > 0) {
-								intensityFromNormal = easingFunc(dotProductNormalizedFrom0To1);
-								// if (intensityFromNormal < 1) intensityFromNormal = intensityFromNormal / 4;
-							// }
-							// else {
-							// 	intensityFromNormal = 0;
-							// }
-						}
-					}
+					// if (dotProduct > 0) {
+						intensityFromNormal = easingFunc(dotProductNormalizedFrom0To1);
+						// if (intensityFromNormal < 1) intensityFromNormal = intensityFromNormal / 4;
+					// }
+					// else {
+					// 	intensityFromNormal = 0;
+					// }
 
 					// console.log(intensityFromNormal);
-
 				}
 
 				let lightIntensity = (lightDistance - Math.sqrt(distanceSquared)) / lightDistance;
@@ -369,8 +349,6 @@ function applyDynamicLightToLightMap(
 				imageData.data[pixelDataIndex + 1] += newG;
 				imageData.data[pixelDataIndex + 2] += newB;
 				imageData.data[pixelDataIndex + 3] = 255;
-				// imageData.data[i + 3] = ;
-				// RenderUtils.setPixelColor(imageData.data, i, newR, newG, newB);
 			}
 		}
 	}
