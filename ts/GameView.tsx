@@ -26,8 +26,11 @@ class GameView extends Nitro.Component<GameViewInput> {
 
 	private scene: HTMLCanvasElement | null = null;
 	private normals: CanvasRenderingContext2D | null = null;
+	private normalData: ImageData | null = null;
 	private offsets: CanvasRenderingContext2D | null = null;
+	private offsetData: ImageData | null = null;
 	private heights: CanvasRenderingContext2D | null = null;
+	private heightData: ImageData | null = null;
 
 	constructor() {
 		super();
@@ -37,14 +40,17 @@ class GameView extends Nitro.Component<GameViewInput> {
 		});
 		Images.load('img/normals.png', (src, image) => {
 			this.normals = imageToCanvas(image, true);
+			this.normalData = this.normals.getImageData(0, 0, this.normals.canvas.width, this.normals.canvas.height);
 			this.setDirty();
 		});
 		Images.load('img/y_offsets.png', (src, image) => {
 			this.offsets = imageToCanvas(image, true);
+			this.offsetData = this.offsets.getImageData(0, 0, this.offsets.canvas.width, this.offsets.canvas.height);
 			this.setDirty();
 		});
 		Images.load('img/heights.png', (src, image) => {
 			this.heights = imageToCanvas(image, true)!
+			this.heightData = this.heights.getImageData(0, 0, this.heights.canvas.width, this.heights.canvas.height);
 			this.setDirty();
 		});
 	}
@@ -97,9 +103,9 @@ class GameView extends Nitro.Component<GameViewInput> {
 		if (input.renderDynamicLight && input.lightX !== undefined && input.lightY !== undefined) {
 			const roundedLightX = Math.round(input.lightX / input.scale);
 			const roundedLightY = Math.round(input.lightY / input.scale);
-			const normals = (input.applyNormalMap && this.normals !== null) ? this.normals : null;
-			const offsets = input.applyPixelLocationOffsetMap ? this.offsets : null;
-			applyDynamicLightToLightMap(lightCanvas, roundedLightX, roundedLightY, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heights, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
+			const normals = (input.applyNormalMap && this.normalData !== null) ? this.normalData : null;
+			const offsets = input.applyPixelLocationOffsetMap ? this.offsetData : null;
+			applyDynamicLightToLightMap(lightCanvas, roundedLightX, roundedLightY, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heightData, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
 
 			// applyDynamicLightToLightMap(lightCanvas, roundedLightX - 1, roundedLightY + 1, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heights, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
 			// applyDynamicLightToLightMap(lightCanvas, roundedLightX - 1, roundedLightY - 1, 'rgb(255, 255, 200)', LIGHT_DISTANCE, normals, offsets, this.heights, input.applyShadowMap ? getShadowMap() : null, input.applyPixelOffsetToShadowCalculations);
@@ -173,9 +179,9 @@ function applyDynamicLightToLightMap(
 	lightY: int,
 	lightColor: string,
 	lightDistance: int,
-	normalMap: CanvasRenderingContext2D | null = null,
-	pixelOffsetMap: CanvasRenderingContext2D| null = null,
-	heightMap: CanvasRenderingContext2D | null = null,
+	normalMap: ImageData | null = null,
+	pixelOffsetMap: ImageData| null = null,
+	heightMap: ImageData | null = null,
 	shadowMap: CanvasRenderingContext2D | null = null, // All grey so channel doesn't matter, color value corresponds to height of the object at that x/y
 	applyPixelOffsetToShadowCalculations: boolean | null = null
 ): void {
@@ -193,20 +199,17 @@ function applyDynamicLightToLightMap(
 
 	let normalPixelData: Uint8ClampedArray | null = null;
 	if (normalMap !== null) {
-		const normalData = normalMap.getImageData(0, 0, normalMap.canvas.width, normalMap.canvas.height);
-		normalPixelData = normalData.data;
+		normalPixelData = normalMap.data;
 	}
 
 	let pixelOffsetData: Uint8ClampedArray | null = null;
 	if (pixelOffsetMap !== null) {
-		const offsetData = pixelOffsetMap.getImageData(0, 0, pixelOffsetMap.canvas.width, pixelOffsetMap.canvas.height);
-		pixelOffsetData = offsetData.data;
+		pixelOffsetData = pixelOffsetMap.data;
 	}
 
 	let heightPixelData: Uint8ClampedArray | null = null;
 	if (heightMap !== null) {
-		const heightData = heightMap.getImageData(0, 0, heightMap.canvas.width, heightMap.canvas.height);
-		heightPixelData = heightData.data;
+		heightPixelData = heightMap.data;
 	}
 
 	let shadowPixelData: Uint8ClampedArray | null = null;
