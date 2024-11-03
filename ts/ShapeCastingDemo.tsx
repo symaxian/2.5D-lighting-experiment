@@ -17,7 +17,6 @@ if (typeof viewParam === 'string') {
 	}
 }
 
-
 class ShapeCastingDemo extends Nitro.Component {
 
 	private scale = 3;
@@ -79,8 +78,7 @@ class ShapeCastingDemo extends Nitro.Component {
 
 		return <div key="root" style="width: 60%">
 			<div style="text-align: center;">
-				<h1>Shape casting</h1>
-				<h3>Simulating 3d lighting in 2d</h3>
+				<h2>Simulating 3d lighting in 2d</h2>
 				<button style="font-size: 24px" onClick={this.previousView} disabled={view == 0}>Previous</button>
 				<span style="display: inline-block; width: 20px"></span>
 				<button style="font-size: 24px" onClick={this.nextView} disabled={view == VIEW_COUNT}>Next</button>
@@ -89,9 +87,7 @@ class ShapeCastingDemo extends Nitro.Component {
 			<div style="width: 100%; display: flex; flex-direction: column; align-items: center;">
 				
 				{ view === 0 &&
-					<p>
-						Let's start with a 2d image of the game world.
-					</p>
+					<p>Let's start with a 2d image of the game world.</p>
 				}
 				{ view === 0 &&
 					<GameView width={width} height={height} scale={scale} mode={ImageMode.PLAIN_IMAGE}/>

@@ -82,8 +82,8 @@ class GameView extends Nitro.Component<GameViewInput> {
 				assert(lightX !== undefined);
 				assert(lightY !== undefined);
 				assert(lightZ !== undefined);
-				shadowMap = generateShadowMap2(this.heightMapData, lightX / input.scale, lightY / input.scale, lightZ, true);
-				// shadowMap = generateShadowMap3(this.heightMapData.width, this.heightMapData.height, this.heightRects, lightX / input.scale, lightY / input.scale, lightZ, true);
+				shadowMap = generateShadowMapByCastingPixels(this.heightMapData, lightX / input.scale, lightY / input.scale, lightZ, true);
+				// shadowMap = generateShadowMapByCastingRects(this.heightMapData.width, this.heightMapData.height, this.heightRects, lightX / input.scale, lightY / input.scale, lightZ, true);
 			}
 			return shadowMap;
 		};
@@ -235,12 +235,8 @@ function applyDynamicLightToLightMap(
 	const lightDistanceSquared = lightDistance * lightDistance;
 
 	const lightCanvas = lightCtx.canvas;
-	// ctx.drawImage(source.canvas, 0, 0);
 
-	// console.time('get lightCtx image data');
 	const imageData = lightCtx.getImageData(0, 0, lightCanvas.width, lightCanvas.height);
-	// console.timeEnd('get lightCtx image data');
-	// const imagePixelData = imageData.data;
 
 	let pixelOffsetData: Uint8ClampedArray | null = null;
 	if (pixelOffsetMap !== null) {
@@ -254,17 +250,11 @@ function applyDynamicLightToLightMap(
 
 	let shadowPixelData: Uint8ClampedArray | null = null;
 	if (shadowMap !== null) {
-		// console.time('get shadowMap image data');
 		const shadowData = shadowMap.getImageData(0, 0, shadowMap.canvas.width, shadowMap.canvas.height);
-		// console.timeEnd('get shadowMap image data');
 		shadowPixelData = shadowData.data;
 	}
 
 	const easingFunc = easing.linear;
-
-	// lightCtx.filter = 'blur(2px)';
-
-	// console.time('apply dynamic light to light map');
 
 	const imageWidth = lightCanvas.width;
 	const imageHeight = lightCanvas.height;
@@ -286,7 +276,7 @@ function applyDynamicLightToLightMap(
 			// Get the pixel Z value
 			let pixelZ = 0;
 			if (heightPixelData !== null) {
-				pixelZ = heightPixelData[correctedPixelDataIndex] / 8;
+				pixelZ = heightPixelData[correctedPixelDataIndex] / HEIGHT_MAP_VALUE_DIVIDER;
 			}
 
 			const distanceSquared = Utils.pythagoreanDistanceSquared3(correctedPixelX, correctedPixelY, pixelZ, lightX, lightY, lightZ);
@@ -321,28 +311,12 @@ function applyDynamicLightToLightMap(
 					const normalizedLightVectorY = lightVectorY / lightVectorMagnitude;
 
 					const dotProduct = normalizedLightVectorX * normalX + normalizedLightVectorY * normalY; // This seems to range from -1 to 1
-					// console.log(dotProduct);
 					const dotProductNormalizedFrom0To1 = (dotProduct + 1) / 2;
 
-					// if (dotProduct > 0) {
-						intensityFromNormal = easingFunc(dotProductNormalizedFrom0To1);
-						// if (intensityFromNormal < 1) intensityFromNormal = intensityFromNormal / 4;
-					// }
-					// else {
-					// 	intensityFromNormal = 0;
-					// }
-
-					// console.log(intensityFromNormal);
+					intensityFromNormal = easingFunc(dotProductNormalizedFrom0To1);
 				}
 
-				let lightIntensity = (lightDistance - Math.sqrt(distanceSquared)) / lightDistance;
-				lightIntensity *= intensityFromNormal;
-				// const r = imagePixelData[i];
-				// const g = imagePixelData[i + 1];
-				// const b = imagePixelData[i + 2];
-				// const newR = r + Math.round((r/255) * lightIntensity * dynamicLightR);
-				// const newG = g + Math.round((g/255) * lightIntensity * dynamicLightG);
-				// const newB = b + Math.round((b/255) * lightIntensity * dynamicLightB);
+				const lightIntensity = ((lightDistance - Math.sqrt(distanceSquared)) / lightDistance) * intensityFromNormal;
 				const newR = Math.round(lightIntensity * dynamicLightR);
 				const newG = Math.round(lightIntensity * dynamicLightG);
 				const newB = Math.round(lightIntensity * dynamicLightB);
@@ -354,8 +328,6 @@ function applyDynamicLightToLightMap(
 			}
 		}
 	}
-
-	// console.timeEnd('apply dynamic light to light map');
 
 	lightCtx.putImageData(imageData, 0, 0);
 }
@@ -372,122 +344,7 @@ function applyLightImageToCanvas(target: HTMLCanvasElement, light: HTMLCanvasEle
 // Generate a shadow map given a height map and a dynamic light
 // TODO: Multiple lights, apply to existing shadow map
 // TODO: Optimize, store height data as a single array buffer rather than a canvas?
-function generateShadowMap(heightMap: ImageData, lightX: float, lightY: float, lightZ: float, willReadFrequently: boolean): CanvasRenderingContext2D {
-
-	const width = heightMap.width;
-	const height = heightMap.height;
-
-	const canvas = document.createElement('canvas');
-	canvas.width = width;
-	canvas.height = height;
-	const ctx = canvas.getContext('2d', { willReadFrequently: willReadFrequently })!;
-
-	const heightData = heightMap.data;
-
-	ctx.globalCompositeOperation = 'lighten'; // We use 'lighten' to ensure that multiple shadows will overwrite correctly, the higher shadow "wins"
-	// ctx.filter = 'blur(1px)';
-
-	for (let pixelY = 0; pixelY < height; pixelY++) {
-		for (let pixelX = 0; pixelX < width; pixelX++) {
-			const i = ((pixelY * width) + pixelX) * 4;
-			const heightValue = heightData[i];
-			if (heightValue > 0) {
-				const angleFromLightToPixelTopLeft = Math.atan2(pixelY - lightY, pixelX - lightX);
-				const angleFromLightToPixelTopRight = Math.atan2(pixelY - lightY, pixelX + 1 - lightX);
-				const angleFromLightToPixelBottomLeft = Math.atan2(pixelY + 1 - lightY, pixelX - lightX);
-				const angleFromLightToPixelBottomRight = Math.atan2(pixelY - lightY, pixelX + 1 - lightX);
-
-				const heightReductionFactorToReduceSelfShadowNoise = 0;
-				const greyValue = heightValue - heightReductionFactorToReduceSelfShadowNoise;
-				ctx.fillStyle = 'rgb(' + greyValue + ',' + greyValue + ',' + greyValue + ')';
-
-				const topLeftDeltaX = Math.cos(angleFromLightToPixelTopLeft);
-				const topLeftDeltaY = Math.sin(angleFromLightToPixelTopLeft);
-
-				const topRightDeltaX = Math.cos(angleFromLightToPixelTopRight);
-				const topRightDeltaY = Math.sin(angleFromLightToPixelTopRight);
-
-				const bottomLeftDeltaX = Math.cos(angleFromLightToPixelBottomLeft);
-				const bottomLeftDeltaY = Math.sin(angleFromLightToPixelBottomLeft);
-
-				const bottomRightDeltaX = Math.cos(angleFromLightToPixelBottomRight);
-				const bottomRightDeltaY = Math.sin(angleFromLightToPixelBottomRight);
-
-				// TODO: Pre-combine pixels into rects, stroke the entire rect and its expansion in one operation; how do we calculate the shape for the rect and its expanded version?
-
-				let shadowDistance: int;
-				const pixelHeightInPixels = heightValue / HEIGHT_MAP_VALUE_DIVIDER;
-				if (lightZ < pixelHeightInPixels) {
-					// Light is lower than the pixel, shadow extends to infnity
-					shadowDistance = 100; // TODO: Calculate minimum needed here based on the viewport
-				}
-				else {
-					let angleOfLightSourceRelativeToPixel = Math.atan(pixelHeightInPixels / lightZ);
-					shadowDistance = pixelHeightInPixels * Math.tan(angleOfLightSourceRelativeToPixel);
-
-					// shadowDistance = pixelHeightInPixels - (lightZ - pixelHeightInPixels);
-					// if (shadowDistance <= 0) continue;
-				}
-
-				const gradient = ctx.createRadialGradient(lightX, lightY, 1, lightX, lightY, 100);
-				gradient.addColorStop(0, 'rgb(' + greyValue + ',' + greyValue + ',' + greyValue + ')');
-				gradient.addColorStop(1, 'rgb(' + greyValue + ',' + greyValue + ',' + greyValue + ',' + 0 + ')');
-				ctx.fillStyle = gradient;
-
-				// Extrude the top edge
-				// ctx.fillStyle = 'red';
-				ctx.beginPath();
-				ctx.moveTo(pixelX, pixelY); // Top left corner of pixel
-				ctx.lineTo(pixelX + topLeftDeltaX * shadowDistance, pixelY + topLeftDeltaY * shadowDistance); // Extruded top left corner of pixel
-				ctx.lineTo(pixelX + 1 + topRightDeltaX * shadowDistance, pixelY + topRightDeltaY * shadowDistance); // Extruded top right corner of pixel
-				ctx.lineTo(pixelX + 1, pixelY) // Top right corner of pixel
-				ctx.closePath();
-				ctx.fill();
-
-				// Extrude the right edge
-				// ctx.fillStyle = 'green';
-				ctx.beginPath();
-				ctx.moveTo(pixelX + 1, pixelY); // Top right corner of pixel
-				ctx.lineTo(pixelX + 1 + topRightDeltaX * shadowDistance, pixelY + topRightDeltaY * shadowDistance); // Extruded top right corner of pixel
-				ctx.lineTo(pixelX + 1 + bottomRightDeltaX * shadowDistance, pixelY + 1 + topRightDeltaY * shadowDistance); // Extruded bottom right corner of pixel
-				ctx.lineTo(pixelX + 1, pixelY + 1) // Bottom right corner of pixel
-				ctx.closePath();
-				ctx.fill();
-
-				// Extrude the bottom edge
-				// ctx.fillStyle = 'aqua';
-				ctx.beginPath();
-				ctx.moveTo(pixelX, pixelY + 1); // Bottom left corner of pixel
-				ctx.lineTo(pixelX + bottomLeftDeltaX * shadowDistance, pixelY + 1 + bottomLeftDeltaY * shadowDistance); // Extruded bottom left corner of pixel
-				ctx.lineTo(pixelX + 1 + bottomRightDeltaX * shadowDistance, pixelY + 1 + bottomRightDeltaY * shadowDistance); // Extruded bottom right corner of pixel
-				ctx.lineTo(pixelX + 1, pixelY + 1) // Bottom right corner of pixel
-				ctx.closePath();
-				ctx.fill();
-
-				// Extrude the left edge
-				// ctx.fillStyle = 'pink';
-				ctx.beginPath();
-				ctx.moveTo(pixelX, pixelY); // Top left corner of pixel
-				ctx.lineTo(pixelX + topLeftDeltaX * shadowDistance, pixelY + topLeftDeltaY * shadowDistance); // Extruded top left corner of pixel
-				ctx.lineTo(pixelX + bottomLeftDeltaX * shadowDistance, pixelY + 1 + topLeftDeltaY * shadowDistance); // Extruded bottom left corner of pixel
-				ctx.lineTo(pixelX, pixelY + 1) // Bottom left corner of pixel
-				ctx.closePath();
-				ctx.fill();
-
-			}
-		}
-	}
-
-	ctx.globalCompositeOperation = 'source-over';
-
-	return ctx;
-
-}
-
-// Generate a shadow map given a height map and a dynamic light
-// TODO: Multiple lights, apply to existing shadow map
-// TODO: Optimize, store height data as a single array buffer rather than a canvas?
-function generateShadowMap2(heightMap: ImageData, lightX: float, lightY: float, lightZ: float, willReadFrequently: boolean): CanvasRenderingContext2D {
+function generateShadowMapByCastingPixels(heightMap: ImageData, lightX: float, lightY: float, lightZ: float, willReadFrequently: boolean): CanvasRenderingContext2D {
 
 	const width = heightMap.width;
 	const height = heightMap.height;
@@ -762,7 +619,7 @@ function clearHeights(imageWidth: int, data: Uint8Array, rectX: int, rectY: int,
 // Generate a shadow map given a height map and a dynamic light
 // TODO: Multiple lights, apply to existing shadow map
 // TODO: Optimize, store height data as a single array buffer rather than a canvas?
-function generateShadowMap3(width: int, height: int, heightRects: HeightRect[], lightX: float, lightY: float, lightZ: float, willReadFrequently: boolean): CanvasRenderingContext2D {
+function generateShadowMapByCastingRects(width: int, height: int, heightRects: HeightRect[], lightX: float, lightY: float, lightZ: float, willReadFrequently: boolean): CanvasRenderingContext2D {
 
 	const canvas = document.createElement('canvas');
 	canvas.width = width;
@@ -770,7 +627,6 @@ function generateShadowMap3(width: int, height: int, heightRects: HeightRect[], 
 	const ctx = canvas.getContext('2d', { willReadFrequently: willReadFrequently })!;
 
 	ctx.globalCompositeOperation = 'lighten'; // We use 'lighten' to ensure that multiple shadows will overwrite correctly, the higher shadow "wins"
-	// ctx.filter = 'blur(1px)';
 
 	for (const rect of heightRects) {
 		const heightValue = rect.z;
