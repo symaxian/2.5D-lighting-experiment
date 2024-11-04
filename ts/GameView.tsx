@@ -24,6 +24,14 @@ type GameViewInput = {
 	applyPixelOffsetToShadowCalculations?: boolean
 }
 
+function copyCanvas(canvas: CanvasRenderingContext2D, willReadFrequently = false): CanvasRenderingContext2D {
+	const width = canvas.canvas.width;
+	const height = canvas.canvas.height;
+	const copy = Utils.createCanvas(width, height, willReadFrequently);
+	copy.putImageData(canvas.getImageData(0, 0, width, height), 0, 0);
+	return copy;
+}
+
 class GameView extends Nitro.Component<GameViewInput> {
 
 	private scene: HTMLCanvasElement | null = null;
@@ -93,7 +101,7 @@ class GameView extends Nitro.Component<GameViewInput> {
 		if (input.mode === ImageMode.PLAIN_IMAGE) {
 			mapImage = (this.scene !== null) ? this.scene.getContext('2d')! : null;
 			if (mapImage !== null) {
-				mapImage = RenderUtils.copyCanvas(mapImage, false);
+				mapImage = copyCanvas(mapImage, false);
 			}
 		}
 		else if (input.mode === ImageMode.NORMAL_MAP) {

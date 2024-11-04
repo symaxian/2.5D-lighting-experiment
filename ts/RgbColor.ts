@@ -31,24 +31,6 @@ class RgbColor {
 		return new RgbColor(255, 255, 255);
 	}
 
-	// Note: Ignores the alpha value
-	// Input example: f025221b, first two digits are alpha
-	static parseTiledColorString(input: string): PackedColor {
-		if (input.length === 7) {
-			// No alpha
-			return Colors.pack(
-				parseInt(input.substr(1, 2), 16),
-				parseInt(input.substr(3, 2), 16),
-				parseInt(input.substr(5, 2), 16)
-			);
-		}
-		return Colors.pack(
-			parseInt(input.substr(3, 2), 16),
-			parseInt(input.substr(5, 2), 16),
-			parseInt(input.substr(7, 2), 16)
-		);
-	}
-
 }
 
 namespace Colors {
@@ -76,13 +58,5 @@ namespace Colors {
 
 	export const WHITE = Colors.pack(255, 255, 255);
 	export const BLACK = 0;
-
-	export const UI_LIGHT_GREY = Colors.pack(172, 172, 164);
-	export const UI_DARK_GREY = Colors.pack(53, 53, 53);
-
-	export const CHAT_SYSTEM_MESSAGE = Colors.pack(200, 200, 200);
-	export const CHAT_EXAMINE_MESSAGE = Colors.pack(225, 225, 225);
-	export const CHAT_SAY_MESSAGE = WHITE;
-	export const CHAT_DIRECT_MESSAGE = Colors.pack(128, 128, 255);
 
 }
